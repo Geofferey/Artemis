@@ -64,6 +64,13 @@ internal class CoreService : ICoreService
 
         // Initialize the services
         _pluginManagementService.LoadPlugins(IsElevated);
+        // Loading plugins may request a restart to gain or drop elevation, no point in continuing then
+        if (Utilities.IsShuttingDown)
+        {
+            _logger.Information("Skipping further initialization because Artemis is shutting down or restarting");
+            return;
+        }
+
         _pluginManagementService.StartHotReload();
         _renderService.Initialize();
         
