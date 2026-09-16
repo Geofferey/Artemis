@@ -15,6 +15,11 @@ public static class Utilities
     private static bool _shuttingDown;
 
     /// <summary>
+    ///     Gets a boolean indicating whether the application is shutting down or restarting
+    /// </summary>
+    public static bool IsShuttingDown => _shuttingDown;
+
+    /// <summary>
     ///     Call this before even initializing the Core to make sure the folders required for operation are in place
     /// </summary>
     public static void PrepareFirstLaunch()

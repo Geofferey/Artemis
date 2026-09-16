@@ -17,6 +17,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
+using DryIoc;
 using ReactiveUI;
 using Serilog;
 
@@ -95,10 +96,17 @@ public class RootViewModel : RoutableHostScreen<RoutableScreen>, IMainWindowProv
                 await workshopService.Initialize();
                 // Core is initialized now that everything is ready to go
                 coreService.Initialize();
+                if (Utilities.IsShuttingDown)
+                    return;
 
                 registrationService.RegisterBuiltInDataModelDisplays();
                 registrationService.RegisterBuiltInDataModelInputs();
                 registrationService.RegisterBuiltInPropertyEditors();
+            }
+            catch (ContainerException e) when (e.Error == Error.ContainerIsDisposed && Utilities.IsShuttingDown)
+            {
+                // Expected when restarting (e.g. to drop elevation) while initialization is still running
+                _logger.Debug(e, "Container disposed during initialization because Artemis is restarting");
             }
             catch (Exception e)
             {
