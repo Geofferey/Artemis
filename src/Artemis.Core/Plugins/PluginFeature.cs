@@ -120,11 +120,17 @@ public abstract class PluginFeature : CorePropertyChanged, IDisposable
 
             if (!enable)
             {
-                // Even if disable failed, still leave it in a disabled state to avoid more issues
-                InternalDisable();
-                IsEnabled = false;
+                try
+                {
+                    InternalDisable();
+                }
+                finally
+                {
+                    // Even if disable failed, still leave it in a disabled state to avoid more issues
+                    IsEnabled = false;
+                    OnDisabled();
+                }
 
-                OnDisabled();
                 return;
             }
 

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Linq;
+using Artemis.Core.Services.Core;
 using RGB.NET.Core;
 
 namespace Artemis.Core.DeviceProviders;
@@ -121,5 +122,20 @@ public abstract class DeviceProvider : PluginFeature
     /// </summary>
     public virtual void Suspend()
     {
+    }
+
+    internal override void InternalDisable()
+    {
+        // Stopping a trigger whose update loop died crashes the application, see DeviceUpdateTriggerInspector
+        try
+        {
+            foreach ((int _, IDeviceUpdateTrigger trigger) in RgbDeviceProvider.UpdateTriggers)
+                DeviceUpdateTriggerInspector.Defuse(trigger);
+        }
+        catch (Exception)
+        {
+        }
+
+        base.InternalDisable();
     }
 }
