@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Reactive;
+using System.Threading.Tasks;
 using Artemis.Core;
 using Artemis.Core.DryIoc;
 using Artemis.UI.DryIoc;
@@ -17,8 +18,10 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Logging;
 using Avalonia.Styling;
+using Avalonia.Threading;
 using DryIoc;
 using ReactiveUI;
+using Serilog;
 using Splat.DryIoc;
 using Container = DryIoc.Container;
 
@@ -53,7 +56,21 @@ public static class ArtemisBootstrapper
         _container.UseDryIocDependencyResolver();
 
         Logger.Sink = _container.Resolve<SerilogAvaloniaSink>();
+        RegisterGlobalExceptionLogging(_container.Resolve<ILogger>());
         return _container;
+    }
+
+    private static void RegisterGlobalExceptionLogging(ILogger logger)
+    {
+        // Log exceptions that would otherwise take the application down (or disappear) without leaving a trace
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            logger.Fatal(e.ExceptionObject as Exception, "Unhandled exception (terminating: {IsTerminating})", e.IsTerminating);
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            logger.Error(e.Exception, "Unobserved task exception");
+            e.SetObserved();
+        };
+        Dispatcher.UIThread.UnhandledException += (_, e) => logger.Fatal(e.Exception, "Unhandled UI thread exception");
     }
 
     public static void Initialize()
@@ -67,12 +84,13 @@ public static class ArtemisBootstrapper
 
         // Don't shut down when the last window closes, we might still be active in the tray
         desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        // Set up before the root view model so exceptions during its creation are shown too
+        RxApp.DefaultExceptionHandler = Observer.Create<Exception>(DisplayUnhandledException);
         // Create the root view model that drives the UI
         RootViewModel rootViewModel = _container.Resolve<RootViewModel>();
         // Apply the root view model to the data context of the application so that tray icon commands work
         _application.DataContext = rootViewModel;
 
-        RxApp.DefaultExceptionHandler = Observer.Create<Exception>(DisplayUnhandledException);
         DataModelPicker.DataModelUIService = _container.Resolve<IDataModelUIService>();
     }
 
