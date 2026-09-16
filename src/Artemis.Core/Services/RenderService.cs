@@ -80,7 +80,7 @@ internal class RenderService : IRenderService, IRenderer, IDisposable
         }
         catch (Exception e)
         {
-            _updateExceptions.Add(e);
+            AddUpdateException(e);
         }
     }
 
@@ -94,7 +94,7 @@ internal class RenderService : IRenderService, IRenderer, IDisposable
         }
         catch (Exception e)
         {
-            _updateExceptions.Add(e);
+            AddUpdateException(e);
         }
         finally
         {
@@ -146,6 +146,15 @@ internal class RenderService : IRenderService, IRenderer, IDisposable
         }
     }
     
+    private void AddUpdateException(Exception exception)
+    {
+        lock (_updateExceptions)
+        {
+            if (_updateExceptions.Count < 1000)
+                _updateExceptions.Add(exception);
+        }
+    }
+
     private void LogUpdateExceptions()
     {
         // Only log update exceptions every 10 seconds to avoid spamming the logs
@@ -153,15 +162,25 @@ internal class RenderService : IRenderService, IRenderer, IDisposable
             return;
         _lastExceptionLog = DateTime.Now;
 
-        if (!_updateExceptions.Any())
-            return;
+        List<Exception> exceptions;
+        lock (_updateExceptions)
+        {
+            if (!_updateExceptions.Any())
+                return;
+
+            // When logging is finished start with a fresh slate
+            exceptions = _updateExceptions.ToList();
+            _updateExceptions.Clear();
+        }
 
         // Group by stack trace, that should gather up duplicate exceptions
-        foreach (IGrouping<string?, Exception> exceptions in _updateExceptions.GroupBy(e => e.StackTrace))
-            _logger.Warning(exceptions.First(), "Exception was thrown {count} times during update in the last 10 seconds", exceptions.Count());
+        foreach (IGrouping<string?, Exception> group in exceptions.GroupBy(e => e.StackTrace))
+            _logger.Warning(group.First(), "Exception was thrown {count} times during update in the last 10 seconds", group.Count());
+    }
 
-        // When logging is finished start with a fresh slate
-        _updateExceptions.Clear();
+    private void SurfaceOnException(ExceptionEventArgs args)
+    {
+        AddUpdateException(args.Exception);
     }
 
     private void DeviceServiceOnDeviceProviderAdded(object? sender, DeviceProviderEventArgs e)
@@ -210,6 +229,7 @@ internal class RenderService : IRenderService, IRenderer, IDisposable
     public void Dispose()
     {
         IsPaused = true;
+        _surfaceManager.Surface.Exception -= SurfaceOnException;
         _surfaceManager.Dispose();
     }
     
@@ -226,8 +246,9 @@ internal class RenderService : IRenderService, IRenderer, IDisposable
             return;
         
         SetGraphicsContext();
+        _surfaceManager.Surface.Exception += SurfaceOnException;
         _surfaceManager.AddDevices(_deviceService.EnabledDevices);
-        
+
         _deviceService.DeviceProviderAdded += DeviceServiceOnDeviceProviderAdded;
         _deviceService.DeviceProviderRemoved += DeviceServiceOnDeviceProviderRemoved;
         _deviceService.DeviceEnabled += DeviceServiceOnDeviceEnabled;
